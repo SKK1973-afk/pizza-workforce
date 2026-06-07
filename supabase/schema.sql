@@ -235,7 +235,10 @@ CREATE TRIGGER on_auth_user_created
 
 -- Auto-create scheduled breaks when shift is inserted
 CREATE OR REPLACE FUNCTION public.create_scheduled_breaks()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   duration_mins INTEGER;
   shift_start TIMESTAMPTZ;

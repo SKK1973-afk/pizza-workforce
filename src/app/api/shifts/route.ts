@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/server';
 import { getApiUser } from '@/lib/api-auth';
 import { canEditRoster } from '@/lib/permissions';
 import type { ShiftType } from '@/types';
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'You cannot edit this roster' }, { status: 403 });
   }
 
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from('shifts')
     .insert({
@@ -44,5 +44,6 @@ export async function POST(request: Request) {
 
 function formatTimeTz(time: string): string {
   if (time.includes('+') || time.includes('Z')) return time;
-  return `${time}:00+12`;
+  if (/^\d{2}:\d{2}$/.test(time)) return `${time}+12`;
+  return time.includes(':') ? `${time}+12` : `${time}:00+12`;
 }

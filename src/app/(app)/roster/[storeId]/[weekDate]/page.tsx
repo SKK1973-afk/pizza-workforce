@@ -1,5 +1,5 @@
 import { requireRouteAccess } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { canViewRoster, canEditRoster } from '@/lib/permissions';
 import { RosterGrid } from '@/components/roster/RosterGrid';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -33,7 +33,8 @@ export default async function WeeklyRosterPage({
     .eq('week_start_date', weekDate)
     .order('scheduled_start');
 
-  const { data: staff } = await supabase
+  const staffClient = canEditRoster(user, storeId) ? await createServiceClient() : supabase;
+  const { data: staff } = await staffClient
     .from('users')
     .select('id, full_name')
     .eq('store_id', storeId)

@@ -231,8 +231,12 @@ export function RosterGrid({ storeId, weekStartDate, shifts: initialShifts, staf
         </table>
       </div>
 
-      {canEdit && (
+      {canEdit ? (
         <p className="text-sm text-slate-500">Click a cell to add a shift, or click an existing shift to edit or delete it.</p>
+      ) : (
+        <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg">
+          View only — log in as a <strong>store manager</strong> (e.g. sm-ponsonby@pizza.nz) to add and edit shifts.
+        </p>
       )}
 
       {editor && (

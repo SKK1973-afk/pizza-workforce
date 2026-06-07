@@ -37,6 +37,7 @@ export function canAccessStore(user: User, storeId: string): boolean {
 }
 
 export function canEditRoster(user: User, storeId: string): boolean {
+  if (user.role === 'head_of_operations') return true;
   return user.role === 'store_manager' && user.store_id === storeId;
 }
 
