@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { getJoinedField } from '@/lib/supabase-helpers';
+import { GenerateTimesheets } from '@/components/timesheets/GenerateTimesheets';
 
 const STATUS_MAP: Record<string, { status: 'success' | 'warning' | 'info' | 'neutral'; label: string }> = {
   draft: { status: 'neutral', label: 'Draft' },
@@ -31,15 +32,23 @@ export default async function TimesheetsPage() {
 
   const { data: timesheets } = await query;
 
+  const showGenerate = user.role === 'store_manager' && user.store_id;
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-2">Timesheets</h1>
       <p className="text-slate-600 mb-6">Review and approve weekly timesheets</p>
 
+      {showGenerate && (
+        <div className="mb-6">
+          <GenerateTimesheets storeId={user.store_id!} />
+        </div>
+      )}
+
       {!timesheets?.length ? (
         <EmptyState
           title="No timesheets"
-          description="Timesheets will appear here once staff complete their weekly hours."
+          description="Staff clock in/out to build hours, then click Generate Timesheets above — or timesheets are created automatically on clock out."
         />
       ) : (
         <div className="space-y-3">

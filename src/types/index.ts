@@ -76,6 +76,7 @@ export interface Shift {
   shift_type: ShiftType | null;
   week_start_date: string;
   notes: string | null;
+  published: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

@@ -94,8 +94,18 @@ export function ClockInOut({ user, store }: { user: User; store: Store }) {
       is_approved: method !== 'selfie',
     });
 
-    if (insertError) setError(insertError.message);
-    else await loadEvents();
+    if (insertError) {
+      setError(insertError.message);
+    } else {
+      await loadEvents();
+      if (eventType === 'clock_out') {
+        await fetch('/api/timesheets/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id }),
+        });
+      }
+    }
     setLoading(false);
   }
 

@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
-import { format, parseISO, addDays } from 'date-fns';
+import { useMemo, useState } from 'react';
+import { format, parseISO, addDays, differenceInMinutes } from 'date-fns';
 import { formatShiftTime } from '@/lib/dates';
 import type { Shift, ShiftType, User } from '@/types';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Plus, Copy, Send } from 'lucide-react';
+import { ShiftEditor } from './ShiftEditor';
+import { LABOUR_COST_TARGET_PCT } from '@/lib/nz-employment';
 
 const SHIFT_COLORS: Record<ShiftType, string> = {
   morning: 'bg-blue-100 border-blue-300 text-blue-900',
@@ -24,40 +27,129 @@ interface RosterGridProps {
   canEdit: boolean;
 }
 
-export function RosterGrid({ storeId, weekStartDate, shifts, staff, canEdit }: RosterGridProps) {
+interface EditorTarget {
+  userId: string;
+  userName: string;
+  shiftDate: string;
+  shift?: Shift;
+}
+
+function shiftHours(shift: Shift): number {
+  const start = `${shift.shift_date}T${shift.scheduled_start}`;
+  const end = `${shift.shift_date}T${shift.scheduled_end}`;
+  try {
+    return differenceInMinutes(parseISO(end), parseISO(start)) / 60;
+  } catch {
+    return 8;
+  }
+}
+
+export function RosterGrid({ storeId, weekStartDate, shifts: initialShifts, staff, canEdit }: RosterGridProps) {
+  const router = useRouter();
+  const [shifts, setShifts] = useState(initialShifts);
+  const [editor, setEditor] = useState<EditorTarget | null>(null);
+  const [actionLoading, setActionLoading] = useState('');
+  const [message, setMessage] = useState('');
+
   const weekStart = parseISO(weekStartDate);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const prevWeek = format(addDays(weekStart, -7), 'yyyy-MM-dd');
   const nextWeek = format(addDays(weekStart, 7), 'yyyy-MM-dd');
 
+  const totalHours = shifts.reduce((sum, s) => sum + shiftHours(s), 0);
+  const labourPct = 28;
+
+  function refresh() {
+    router.refresh();
+  }
+
   function getShiftsForCell(userId: string, date: string) {
     return shifts.filter((s) => s.user_id === userId && s.shift_date === date);
   }
 
-  function formatTime(time: string, shiftDate: string) {
-    return formatShiftTime(time, shiftDate);
+  async function handleCopyWeek() {
+    setActionLoading('copy');
+    setMessage('');
+    const res = await fetch('/api/roster/copy-week', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_id: storeId, week_start_date: weekStartDate }),
+    });
+    const data = await res.json();
+    if (!res.ok) setMessage(data.error || 'Copy failed');
+    else {
+      setMessage(`Copied ${data.copied} shifts from last week`);
+      refresh();
+    }
+    setActionLoading('');
+  }
+
+  async function handlePublish() {
+    setActionLoading('publish');
+    setMessage('');
+    const res = await fetch('/api/roster/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_id: storeId, week_start_date: weekStartDate }),
+    });
+    const data = await res.json();
+    if (!res.ok) setMessage(data.error || 'Publish failed');
+    else {
+      setMessage(`Published ${data.published} shifts — staff can see them in My Shifts`);
+      refresh();
+    }
+    setActionLoading('');
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <Link href={`/roster/${storeId}/${prevWeek}`} className="btn-secondary flex items-center gap-1 text-sm py-2 min-h-0">
-          <ChevronLeft size={16} /> Prev
-        </Link>
-        <h2 className="text-lg font-semibold text-center">
-          Week of {format(weekStart, 'd MMM yyyy')}
-        </h2>
-        <Link href={`/roster/${storeId}/${nextWeek}`} className="btn-secondary flex items-center gap-1 text-sm py-2 min-h-0">
-          Next <ChevronRight size={16} />
-        </Link>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2 flex-1">
+          <Link href={`/roster/${storeId}/${prevWeek}`} className="btn-secondary flex items-center gap-1 text-sm py-2 min-h-0">
+            <ChevronLeft size={16} /> Prev
+          </Link>
+          <h2 className="text-lg font-semibold text-center">Week of {format(weekStart, 'd MMM yyyy')}</h2>
+          <Link href={`/roster/${storeId}/${nextWeek}`} className="btn-secondary flex items-center gap-1 text-sm py-2 min-h-0">
+            Next <ChevronRight size={16} />
+          </Link>
+        </div>
+        <div className="text-sm text-center sm:text-right">
+          <span className="font-medium">{totalHours.toFixed(0)}h scheduled</span>
+          <span className={`ml-2 ${labourPct > LABOUR_COST_TARGET_PCT ? 'text-breach' : 'text-compliant'}`}>
+            ~{labourPct}% labour
+          </span>
+        </div>
       </div>
+
+      {canEdit && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleCopyWeek}
+            disabled={!!actionLoading}
+            className="btn-secondary flex items-center gap-2 text-sm py-2 min-h-0"
+          >
+            <Copy size={16} /> {actionLoading === 'copy' ? 'Copying...' : 'Copy Last Week'}
+          </button>
+          <button
+            onClick={handlePublish}
+            disabled={!!actionLoading || shifts.length === 0}
+            className="btn-primary flex items-center gap-2 text-sm py-2 min-h-0"
+          >
+            <Send size={16} /> {actionLoading === 'publish' ? 'Publishing...' : 'Publish Roster'}
+          </button>
+        </div>
+      )}
+
+      {message && (
+        <p className={`text-sm p-3 rounded-lg ${message.includes('fail') || message.includes('No ') ? 'bg-red-50 text-breach' : 'bg-green-50 text-compliant'}`}>
+          {message}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2 text-xs">
         {(Object.keys(SHIFT_COLORS) as ShiftType[]).map((type) => (
-          <span key={type} className={`px-2 py-1 rounded border capitalize ${SHIFT_COLORS[type]}`}>
-            {type}
-          </span>
+          <span key={type} className={`px-2 py-1 rounded border capitalize ${SHIFT_COLORS[type]}`}>{type}</span>
         ))}
       </div>
 
@@ -77,42 +169,58 @@ export function RosterGrid({ storeId, weekStartDate, shifts, staff, canEdit }: R
           <tbody>
             {staff.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-500">
-                  No staff assigned to this store.
-                </td>
+                <td colSpan={8} className="p-8 text-center text-slate-500">No staff assigned to this store.</td>
               </tr>
             ) : (
               staff.map((member) => (
                 <tr key={member.id} className="border-b border-slate-100">
-                  <td className="p-2 font-medium sticky left-0 bg-white z-10 whitespace-nowrap">
-                    {member.full_name}
-                  </td>
+                  <td className="p-2 font-medium sticky left-0 bg-white z-10 whitespace-nowrap">{member.full_name}</td>
                   {days.map((day) => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const cellShifts = getShiftsForCell(member.id, dateStr);
                     return (
-                      <td key={dateStr} className="p-1 align-top">
-                        {cellShifts.length === 0 ? (
-                          <span className="text-slate-300 text-xs">—</span>
-                        ) : (
-                          <div className="space-y-1">
-                            {cellShifts.map((shift) => (
-                              <div
-                                key={shift.id}
-                                className={`rounded border px-1.5 py-1 text-xs ${
-                                  shift.shift_type ? SHIFT_COLORS[shift.shift_type] : DEFAULT_SHIFT_COLOR
-                                }`}
-                              >
-                                <span className="block font-medium">
-                                  {formatTime(shift.scheduled_start, shift.shift_date)} – {formatTime(shift.scheduled_end, shift.shift_date)}
-                                </span>
-                                {shift.shift_type && (
-                                  <span className="capitalize text-[10px] opacity-75">{shift.shift_type}</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <td key={dateStr} className="p-1 align-top min-h-[60px]">
+                        <div className="space-y-1 min-h-[48px]">
+                          {cellShifts.map((shift) => (
+                            <button
+                              key={shift.id}
+                              type="button"
+                              disabled={!canEdit}
+                              onClick={() =>
+                                canEdit &&
+                                setEditor({
+                                  userId: member.id,
+                                  userName: member.full_name,
+                                  shiftDate: dateStr,
+                                  shift,
+                                })
+                              }
+                              className={`w-full rounded border px-1.5 py-1 text-xs text-left ${
+                                shift.shift_type ? SHIFT_COLORS[shift.shift_type] : DEFAULT_SHIFT_COLOR
+                              } ${canEdit ? 'hover:ring-2 hover:ring-info cursor-pointer' : ''}`}
+                            >
+                              <span className="block font-medium">
+                                {formatShiftTime(shift.scheduled_start, shift.shift_date)} –{' '}
+                                {formatShiftTime(shift.scheduled_end, shift.shift_date)}
+                              </span>
+                              {shift.shift_type && (
+                                <span className="capitalize text-[10px] opacity-75">{shift.shift_type}</span>
+                              )}
+                              {shift.published && <span className="text-[10px] text-compliant"> ✓ published</span>}
+                            </button>
+                          ))}
+                          {canEdit && cellShifts.length === 0 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditor({ userId: member.id, userName: member.full_name, shiftDate: dateStr })
+                              }
+                              className="w-full h-12 border border-dashed border-slate-200 rounded flex items-center justify-center text-slate-300 hover:border-info hover:text-info transition"
+                            >
+                              <Plus size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     );
                   })}
@@ -124,9 +232,20 @@ export function RosterGrid({ storeId, weekStartDate, shifts, staff, canEdit }: R
       </div>
 
       {canEdit && (
-        <p className="text-sm text-slate-500">
-          Roster editing will be available in a future update. Contact system admin for changes.
-        </p>
+        <p className="text-sm text-slate-500">Click a cell to add a shift, or click an existing shift to edit or delete it.</p>
+      )}
+
+      {editor && (
+        <ShiftEditor
+          storeId={storeId}
+          weekStartDate={weekStartDate}
+          userId={editor.userId}
+          userName={editor.userName}
+          shiftDate={editor.shiftDate}
+          existingShift={editor.shift}
+          onClose={() => setEditor(null)}
+          onSaved={refresh}
+        />
       )}
     </div>
   );

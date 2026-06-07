@@ -37,6 +37,7 @@ export default async function WeeklyRosterPage({
     .from('users')
     .select('id, full_name')
     .eq('store_id', storeId)
+    .in('role', ['team_member', 'two_ic'])
     .eq('is_active', true)
     .order('full_name');
 
@@ -49,10 +50,10 @@ export default async function WeeklyRosterPage({
         <h1 className="text-2xl font-bold mt-2">{store.name} Roster</h1>
       </div>
 
-      {!shifts?.length && !staff?.length ? (
+      {!staff?.length ? (
         <EmptyState
-          title="No roster data"
-          description="No shifts or staff found for this week. Shifts will appear here once published."
+          title="No staff at this store"
+          description="Assign team members to this store before building a roster."
         />
       ) : (
         <RosterGrid
